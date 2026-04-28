@@ -40,8 +40,8 @@ export const ScoreCard = ({ profile, state }: { profile: UserProfile; state: Civ
           {badges.map((b) => (
             <div
               key={b.id}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border-2 border-ink text-xs font-semibold transition-all ${
-                b.earned ? "bg-lime shadow-brutal-sm" : "bg-muted opacity-50"
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border-2 border-foreground text-xs font-semibold transition-all ${
+                b.earned ? "bg-lime text-ink shadow-brutal-sm" : "bg-muted text-muted-foreground opacity-60"
               }`}
               title={b.label}
             >
