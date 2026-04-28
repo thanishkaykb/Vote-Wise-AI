@@ -5,8 +5,8 @@ const STATE_LABEL: Record<CivicState, { label: string; tone: string }> = {
   unknown: { label: "Tell us about you", tone: "bg-muted" },
   not_eligible: { label: "Not yet eligible", tone: "bg-coral text-white" },
   eligible_unregistered: { label: "Eligible — register now", tone: "bg-sky text-white" },
-  registered_uninformed: { label: "Registered — get informed", tone: "bg-lime" },
-  ready: { label: "Ready to vote 🎉", tone: "bg-ink text-paper" },
+  registered_uninformed: { label: "Registered — get informed", tone: "bg-lime text-ink" },
+  ready: { label: "Ready to vote 🎉", tone: "bg-lime text-ink" },
 };
 
 export const ScoreCard = ({ profile, state }: { profile: UserProfile; state: CivicState }) => {
