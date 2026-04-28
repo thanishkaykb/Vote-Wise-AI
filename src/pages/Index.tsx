@@ -51,16 +51,16 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen bg-paper text-ink">
+    <div className="min-h-screen bg-background text-foreground">
       <Header eli15={eli15} setEli15={setEli15} />
       <MarqueeStrip />
 
       {/* HERO */}
       <section className="container pt-10 pb-6">
         <div className="max-w-3xl">
-          <div className="chip bg-lime mb-4">VoteWise.AI · India</div>
+          <div className="chip bg-lime text-ink mb-4">VoteWise.AI · India</div>
           <h1 className="font-display font-bold text-5xl md:text-7xl tracking-tight leading-[0.95]">
-            Don't just <span className="bg-lime px-2 -skew-x-3 inline-block border-2 border-ink shadow-brutal-sm">learn</span> voting. <br className="hidden sm:block" />
+            Don't just <span className="bg-lime text-ink px-2 -skew-x-3 inline-block border-2 border-foreground shadow-brutal-sm">learn</span> voting. <br className="hidden sm:block" />
             Be <span className="underline decoration-coral decoration-[6px] underline-offset-4">ready</span> for it.
           </h1>
           <p className="mt-5 text-lg text-muted-foreground max-w-xl">
@@ -111,10 +111,10 @@ const Index = () => {
 
         <div id="booth" className="lg:col-span-7">
           <BoothFinder
-            confirmed={!!profile.knowsBooth}
-            onConfirm={() => {
-              update({ knowsBooth: true });
-              toast.success("Booth confirmed 📍");
+            selectedBoothId={profile.boothId}
+            onSelect={(boothId, boothName) => {
+              update({ boothId, boothName, knowsBooth: true });
+              toast.success(`Booth selected: ${boothName} 📍`);
             }}
           />
         </div>
@@ -124,10 +124,10 @@ const Index = () => {
         </div>
       </main>
 
-      <footer className="border-t-2 border-ink bg-ink text-paper">
+      <footer className="border-t-2 border-foreground bg-card text-foreground">
         <div className="container py-8 flex items-center justify-between flex-wrap gap-3">
           <div className="font-display font-bold text-lg">VoteWise<span className="text-lime">.AI</span></div>
-          <div className="text-xs text-paper/60">Mock data for demonstration · Always verify with eci.gov.in</div>
+          <div className="text-xs text-muted-foreground">Mock data for demonstration · Always verify with eci.gov.in</div>
         </div>
       </footer>
     </div>

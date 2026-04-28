@@ -5,8 +5,8 @@ const STATE_LABEL: Record<CivicState, { label: string; tone: string }> = {
   unknown: { label: "Tell us about you", tone: "bg-muted" },
   not_eligible: { label: "Not yet eligible", tone: "bg-coral text-white" },
   eligible_unregistered: { label: "Eligible — register now", tone: "bg-sky text-white" },
-  registered_uninformed: { label: "Registered — get informed", tone: "bg-lime" },
-  ready: { label: "Ready to vote 🎉", tone: "bg-ink text-paper" },
+  registered_uninformed: { label: "Registered — get informed", tone: "bg-lime text-ink" },
+  ready: { label: "Ready to vote 🎉", tone: "bg-lime text-ink" },
 };
 
 export const ScoreCard = ({ profile, state }: { profile: UserProfile; state: CivicState }) => {
@@ -40,8 +40,8 @@ export const ScoreCard = ({ profile, state }: { profile: UserProfile; state: Civ
           {badges.map((b) => (
             <div
               key={b.id}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border-2 border-ink text-xs font-semibold transition-all ${
-                b.earned ? "bg-lime shadow-brutal-sm" : "bg-muted opacity-50"
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border-2 border-foreground text-xs font-semibold transition-all ${
+                b.earned ? "bg-lime text-ink shadow-brutal-sm" : "bg-muted text-muted-foreground opacity-60"
               }`}
               title={b.label}
             >

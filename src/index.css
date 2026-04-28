@@ -8,40 +8,43 @@
 
 @layer base {
   :root {
-    --paper: 48 33% 97%;
-    --ink: 0 0% 7%;
-    --ink-soft: 0 0% 18%;
+    /* Dark by default — Bold Activist */
+    --paper: 0 0% 4%;            /* near-black background */
+    --ink: 0 0% 98%;             /* white "ink" (text/borders) */
+    --ink-soft: 0 0% 80%;
+    --surface: 0 0% 8%;          /* card surface */
+    --surface-2: 0 0% 12%;
     --lime: 76 96% 54%;
-    --lime-deep: 84 80% 38%;
+    --lime-deep: 84 80% 42%;
     --coral: 8 92% 62%;
     --sky: 206 90% 60%;
 
     --background: var(--paper);
     --foreground: var(--ink);
 
-    --card: 0 0% 100%;
+    --card: var(--surface);
     --card-foreground: var(--ink);
 
-    --popover: 0 0% 100%;
+    --popover: var(--surface);
     --popover-foreground: var(--ink);
 
-    --primary: var(--ink);
-    --primary-foreground: var(--paper);
+    --primary: var(--lime);
+    --primary-foreground: 0 0% 4%;
 
-    --secondary: var(--lime);
+    --secondary: var(--surface-2);
     --secondary-foreground: var(--ink);
 
-    --muted: 48 20% 92%;
-    --muted-foreground: 0 0% 35%;
+    --muted: var(--surface-2);
+    --muted-foreground: 0 0% 65%;
 
     --accent: var(--lime);
-    --accent-foreground: var(--ink);
+    --accent-foreground: 0 0% 4%;
 
-    --destructive: 0 84% 55%;
+    --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 0 0% 10%;
-    --input: 0 0% 88%;
+    --border: 0 0% 100%;
+    --input: 0 0% 18%;
     --ring: var(--lime);
 
     --radius: 1rem;
@@ -51,21 +54,9 @@
     --shadow-brutal-lime: 6px 6px 0 0 hsl(var(--lime));
 
     --gradient-hero: linear-gradient(135deg, hsl(var(--lime)) 0%, hsl(var(--lime-deep)) 100%);
-    --gradient-ink: linear-gradient(180deg, hsl(var(--ink)) 0%, hsl(var(--ink-soft)) 100%);
+    --gradient-ink: linear-gradient(180deg, hsl(var(--paper)) 0%, hsl(var(--surface-2)) 100%);
 
     --transition-pop: cubic-bezier(0.34, 1.56, 0.64, 1);
-  }
-
-  .dark {
-    --background: var(--ink);
-    --foreground: var(--paper);
-    --card: 0 0% 12%;
-    --card-foreground: var(--paper);
-    --muted: 0 0% 16%;
-    --muted-foreground: 0 0% 70%;
-    --border: 0 0% 100%;
-    --primary: var(--lime);
-    --primary-foreground: var(--ink);
   }
 }
 
@@ -95,8 +86,10 @@
     box-shadow: 8px 8px 0 0 hsl(var(--ink));
   }
   .brutal-card-lime {
-    @apply bg-card border-2 border-foreground rounded-2xl;
-    box-shadow: var(--shadow-brutal-lime);
+    @apply border-2 border-foreground rounded-2xl;
+    background: linear-gradient(135deg, hsl(var(--lime)) 0%, hsl(var(--lime-deep)) 100%);
+    color: hsl(0 0% 4%);
+    box-shadow: var(--shadow-brutal);
   }
   .chip {
     @apply inline-flex items-center gap-1.5 px-3 py-1 rounded-full border-2 border-foreground text-xs font-bold uppercase tracking-wide bg-background;
@@ -104,6 +97,16 @@
   .marquee-track {
     animation: marquee 28s linear infinite;
   }
+  .prose-chat {
+    @apply text-sm leading-relaxed;
+  }
+  .prose-chat p { @apply my-1.5; }
+  .prose-chat ul { @apply list-disc pl-5 my-1.5 space-y-1; }
+  .prose-chat ol { @apply list-decimal pl-5 my-1.5 space-y-1; }
+  .prose-chat strong { @apply font-bold text-lime; }
+  .prose-chat code { @apply px-1 py-0.5 rounded bg-foreground/10 font-mono text-xs; }
+  .prose-chat a { @apply underline text-lime; }
+  .prose-chat h1, .prose-chat h2, .prose-chat h3 { @apply font-display font-bold mt-2 mb-1; }
 }
 
 @keyframes marquee {
