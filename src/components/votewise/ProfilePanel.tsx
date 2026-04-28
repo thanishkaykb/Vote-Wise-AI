@@ -71,7 +71,7 @@ export const ProfilePanel = ({ profile, update, reset }: Props) => {
 };
 
 const Toggle = ({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) => (
-  <label className="flex items-center justify-between gap-3 p-3 border-2 border-ink rounded-xl bg-paper hover:bg-lime/20 cursor-pointer transition-colors">
+  <label className="flex items-center justify-between gap-3 p-3 border-2 border-foreground rounded-xl bg-background hover:bg-lime/10 cursor-pointer transition-colors">
     <span className="text-sm font-medium">{label}</span>
     <Switch checked={checked} onCheckedChange={onChange} />
   </label>
