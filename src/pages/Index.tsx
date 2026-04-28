@@ -60,7 +60,7 @@ const Index = () => {
         <div className="max-w-3xl">
           <div className="chip bg-lime mb-4">VoteWise.AI · India</div>
           <h1 className="font-display font-bold text-5xl md:text-7xl tracking-tight leading-[0.95]">
-            Don't just <span className="bg-lime px-2 -skew-x-3 inline-block border-2 border-ink shadow-brutal-sm">learn</span> voting. <br className="hidden sm:block" />
+            Don't just <span className="bg-lime text-ink px-2 -skew-x-3 inline-block border-2 border-foreground shadow-brutal-sm">learn</span> voting. <br className="hidden sm:block" />
             Be <span className="underline decoration-coral decoration-[6px] underline-offset-4">ready</span> for it.
           </h1>
           <p className="mt-5 text-lg text-muted-foreground max-w-xl">
