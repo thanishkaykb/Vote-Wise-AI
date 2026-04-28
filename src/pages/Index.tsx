@@ -111,10 +111,10 @@ const Index = () => {
 
         <div id="booth" className="lg:col-span-7">
           <BoothFinder
-            confirmed={!!profile.knowsBooth}
-            onConfirm={() => {
-              update({ knowsBooth: true });
-              toast.success("Booth confirmed 📍");
+            selectedBoothId={profile.boothId}
+            onSelect={(boothId, boothName) => {
+              update({ boothId, boothName, knowsBooth: true });
+              toast.success(`Booth selected: ${boothName} 📍`);
             }}
           />
         </div>
@@ -124,10 +124,10 @@ const Index = () => {
         </div>
       </main>
 
-      <footer className="border-t-2 border-ink bg-ink text-paper">
+      <footer className="border-t-2 border-foreground bg-card text-foreground">
         <div className="container py-8 flex items-center justify-between flex-wrap gap-3">
           <div className="font-display font-bold text-lg">VoteWise<span className="text-lime">.AI</span></div>
-          <div className="text-xs text-paper/60">Mock data for demonstration · Always verify with eci.gov.in</div>
+          <div className="text-xs text-muted-foreground">Mock data for demonstration · Always verify with eci.gov.in</div>
         </div>
       </footer>
     </div>
