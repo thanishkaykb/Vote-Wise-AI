@@ -14,6 +14,8 @@ export type UserProfile = {
   isRegistered?: boolean;
   hasEPIC?: boolean;
   knowsBooth?: boolean;
+  boothId?: string;
+  boothName?: string;
   awarenessScore?: number; // 0..100 from quiz/learning
   preparedness?: boolean; // has a plan (date, transport, ID)
   decisionMade?: boolean;
