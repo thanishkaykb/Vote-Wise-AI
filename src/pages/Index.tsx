@@ -51,14 +51,14 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen bg-paper text-ink">
+    <div className="min-h-screen bg-background text-foreground">
       <Header eli15={eli15} setEli15={setEli15} />
       <MarqueeStrip />
 
       {/* HERO */}
       <section className="container pt-10 pb-6">
         <div className="max-w-3xl">
-          <div className="chip bg-lime mb-4">VoteWise.AI · India</div>
+          <div className="chip bg-lime text-ink mb-4">VoteWise.AI · India</div>
           <h1 className="font-display font-bold text-5xl md:text-7xl tracking-tight leading-[0.95]">
             Don't just <span className="bg-lime text-ink px-2 -skew-x-3 inline-block border-2 border-foreground shadow-brutal-sm">learn</span> voting. <br className="hidden sm:block" />
             Be <span className="underline decoration-coral decoration-[6px] underline-offset-4">ready</span> for it.
