@@ -34,7 +34,7 @@ export const LearningCards = ({ eli15, onComplete }: Props) => {
         <div>
           <div className="text-5xl mb-3">{card.emoji}</div>
           <h3 className="font-display font-bold text-2xl">{card.title}</h3>
-          <p className="mt-2 text-sm text-ink-soft">
+          <p className="mt-2 text-sm text-ink/80 font-medium">
             {eli15 ? card.short : card.long}
           </p>
         </div>
