@@ -14,10 +14,10 @@
     --ink-soft: 0 0% 80%;
     --surface: 0 0% 8%;          /* card surface */
     --surface-2: 0 0% 12%;
-    --lime: 76 96% 54%;
-    --lime-deep: 84 80% 42%;
+    --lime: 75 85% 50%;          /* slightly deeper — better contrast for ink text */
+    --lime-deep: 84 80% 38%;
     --coral: 8 92% 62%;
-    --sky: 206 90% 60%;
+    --sky: 206 90% 56%;
 
     --background: var(--paper);
     --foreground: var(--ink);
