@@ -103,9 +103,9 @@
   .prose-chat p { @apply my-1.5; }
   .prose-chat ul { @apply list-disc pl-5 my-1.5 space-y-1; }
   .prose-chat ol { @apply list-decimal pl-5 my-1.5 space-y-1; }
-  .prose-chat strong { @apply font-bold text-lime; }
+  .prose-chat strong { @apply font-bold text-foreground; }
   .prose-chat code { @apply px-1 py-0.5 rounded bg-foreground/10 font-mono text-xs; }
-  .prose-chat a { @apply underline text-lime; }
+  .prose-chat a { @apply underline text-sky; }
   .prose-chat h1, .prose-chat h2, .prose-chat h3 { @apply font-display font-bold mt-2 mb-1; }
 }
 
