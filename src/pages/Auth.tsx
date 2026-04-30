@@ -180,6 +180,11 @@ const Auth = () => {
               {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
               {mode === "signin" ? "Sign in" : "Create account"}
             </button>
+            {mode === "signup" && (
+              <p className="text-[11px] text-center text-muted-foreground">
+                We'll email you a verification link. You can sign in once your email is confirmed.
+              </p>
+            )}
           </form>
 
           <p className="mt-5 text-sm text-center text-muted-foreground">
