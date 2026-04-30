@@ -129,6 +129,7 @@ const Index = () => {
 
         <Section id="booth" eyebrow="08 · Booth" title="Pick your polling booth">
           <BoothFinder
+            city={profile.city}
             selectedBoothId={profile.boothId}
             onSelect={(boothId, boothName) => {
               update({ boothId, boothName, knowsBooth: true });

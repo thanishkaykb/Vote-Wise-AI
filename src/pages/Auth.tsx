@@ -36,19 +36,33 @@ const Auth = () => {
     setBusy(true);
     try {
       if (mode === "signup") {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email: parsed.data.email,
           password: parsed.data.password,
           options: { emailRedirectTo: `${window.location.origin}/` },
         });
         if (error) throw error;
+        // With email confirmation enabled, session is null until the user clicks the link.
+        if (!data.session) {
+          toast.success("Check your inbox — we sent a verification link to confirm your email.");
+          setMode("signin");
+          setPassword("");
+          return;
+        }
         toast.success("Account created — you're signed in.");
       } else {
         const { error } = await supabase.auth.signInWithPassword({
           email: parsed.data.email,
           password: parsed.data.password,
         });
-        if (error) throw error;
+        if (error) {
+          // Surface the "Email not confirmed" case clearly
+          if (/confirm/i.test(error.message)) {
+            toast.error("Please verify your email first — check your inbox for the link.");
+            return;
+          }
+          throw error;
+        }
         toast.success("Welcome back 👋");
       }
       nav("/", { replace: true });
@@ -166,6 +180,11 @@ const Auth = () => {
               {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
               {mode === "signin" ? "Sign in" : "Create account"}
             </button>
+            {mode === "signup" && (
+              <p className="text-[11px] text-center text-muted-foreground">
+                We'll email you a verification link. You can sign in once your email is confirmed.
+              </p>
+            )}
           </form>
 
           <p className="mt-5 text-sm text-center text-muted-foreground">
