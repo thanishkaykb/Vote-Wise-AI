@@ -1,10 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
-import { Slider } from "@/components/ui/slider";
-import { Zap, TrendingUp, Users, Sparkles, Loader2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Zap, TrendingUp, Users, Sparkles, Loader2, Check } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
-// Real Indian races decided by tiny margins — used as a "fun fact" rotator.
 const FUN_FACTS = [
   "In 2008, C.P. Joshi (Rajasthan) lost by just 1 vote — and his own family hadn't voted that day.",
   "Atingi-Mongchak (Arunachal, 2014) was won by a margin of exactly 1 vote.",
@@ -25,7 +23,7 @@ const GROUPS = [
 
 type GroupId = typeof GROUPS[number]["id"];
 
-const VOTED_KEY = "votewise.poll.voted.v1";
+const VOTED_KEY = "votewise.poll.voted.v2"; // v2: array of group IDs (multi-select)
 const VOTER_KEY = "votewise.poll.voter.v1";
 
 function getVoterKey() {
@@ -37,22 +35,30 @@ function getVoterKey() {
   return k;
 }
 
+function readMyVotes(): Set<GroupId> {
+  try {
+    const raw = localStorage.getItem(VOTED_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw) as GroupId[];
+    return new Set(arr);
+  } catch {
+    return new Set();
+  }
+}
+
+function writeMyVotes(s: Set<GroupId>) {
+  try { localStorage.setItem(VOTED_KEY, JSON.stringify([...s])); } catch {}
+}
+
 export const DecisionSimulator = () => {
-  const [turnout, setTurnout] = useState(45);
   const [counts, setCounts] = useState<Record<GroupId, number>>({ youth: 0, women: 0, urban: 0, custom: 0 });
-  const [myVote, setMyVote] = useState<GroupId | null>(null);
-  const [submitting, setSubmitting] = useState<GroupId | null>(null);
+  const [myVotes, setMyVotes] = useState<Set<GroupId>>(() => readMyVotes());
+  const [pending, setPending] = useState<GroupId | null>(null);
   const [factIndex, setFactIndex] = useState(() => Math.floor(Math.random() * FUN_FACTS.length));
 
-  // Initial fetch + realtime subscription
   useEffect(() => {
-    const stored = localStorage.getItem(VOTED_KEY) as GroupId | null;
-    if (stored) setMyVote(stored);
-
     const fetchCounts = async () => {
-      const { data, error } = await supabase
-        .from("poll_votes")
-        .select("group_id");
+      const { data, error } = await supabase.from("poll_votes").select("group_id");
       if (error) {
         console.warn("[poll] fetch failed", error.message);
         return;
@@ -76,6 +82,14 @@ export const DecisionSimulator = () => {
           setCounts((prev) => (g in prev ? { ...prev, [g]: prev[g] + 1 } : prev));
         }
       )
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "poll_votes" },
+        (payload) => {
+          const g = (payload.old as any).group_id as GroupId;
+          setCounts((prev) => (g in prev ? { ...prev, [g]: Math.max(0, prev[g] - 1) } : prev));
+        }
+      )
       .subscribe();
 
     return () => {
@@ -86,28 +100,44 @@ export const DecisionSimulator = () => {
   const total = counts.youth + counts.women + counts.urban + counts.custom;
   const maxCount = Math.max(1, counts.youth, counts.women, counts.urban, counts.custom);
 
-  const castVote = async (g: GroupId) => {
-    if (myVote || submitting) return;
-    setSubmitting(g);
+  const toggleVote = async (g: GroupId) => {
+    if (pending) return;
+    setPending(g);
     const voter_key = getVoterKey();
-    const { error } = await supabase
-      .from("poll_votes")
-      .insert({ voter_key, group_id: g });
-    setSubmitting(null);
-    if (error) {
-      // duplicate vote (unique constraint) — treat as already voted
-      if (error.code === "23505") {
-        localStorage.setItem(VOTED_KEY, g);
-        setMyVote(g);
-        toast("You've already voted in this poll on this device.");
+    const alreadyVoted = myVotes.has(g);
+
+    if (alreadyVoted) {
+      // un-vote
+      const { error } = await supabase
+        .from("poll_votes")
+        .delete()
+        .eq("voter_key", voter_key)
+        .eq("group_id", g);
+      setPending(null);
+      if (error) {
+        toast.error("Couldn't remove your vote — try again.");
         return;
       }
-      toast.error("Couldn't record your vote — try again.");
-      return;
+      const next = new Set(myVotes);
+      next.delete(g);
+      setMyVotes(next);
+      writeMyVotes(next);
+      toast("Vote removed");
+    } else {
+      const { error } = await supabase
+        .from("poll_votes")
+        .insert({ voter_key, group_id: g });
+      setPending(null);
+      if (error && error.code !== "23505") {
+        toast.error("Couldn't record your vote — try again.");
+        return;
+      }
+      const next = new Set(myVotes);
+      next.add(g);
+      setMyVotes(next);
+      writeMyVotes(next);
+      toast.success("Vote recorded · live poll updated");
     }
-    localStorage.setItem(VOTED_KEY, g);
-    setMyVote(g);
-    toast.success("Vote recorded · live poll updated");
   };
 
   const fact = FUN_FACTS[factIndex];
@@ -120,11 +150,10 @@ export const DecisionSimulator = () => {
       </div>
       <h2 className="font-display font-bold text-xl mt-2">Does your one vote actually matter?</h2>
       <p className="text-sm text-muted-foreground">
-        Vote once for the group you belong to. Watch the live tally grow as others around the country join in.
+        Vote for any groups you belong to — pick more than one if it fits. Tap again to remove. The tally updates live as people across the country join in.
       </p>
 
       <div className="mt-5 grid gap-5">
-        {/* Live group poll */}
         <div>
           <div className="text-xs uppercase tracking-wide font-bold flex items-center gap-1.5 mb-3">
             <Users className="w-3.5 h-3.5" /> Which group are you in?
@@ -137,22 +166,19 @@ export const DecisionSimulator = () => {
               const c = counts[g.id];
               const pct = total > 0 ? Math.round((c / total) * 100) : 0;
               const widthPct = total > 0 ? Math.max(4, (c / maxCount) * 100) : 0;
-              const mine = myVote === g.id;
-              const disabled = !!myVote || submitting !== null;
+              const mine = myVotes.has(g.id);
+              const isPending = pending === g.id;
               return (
                 <button
                   key={g.id}
-                  onClick={() => castVote(g.id)}
-                  disabled={disabled && !mine}
+                  onClick={() => toggleVote(g.id)}
+                  disabled={pending !== null && !isPending}
                   className={`relative w-full overflow-hidden p-3 rounded-xl border-2 border-foreground text-left transition-all ${
                     mine
                       ? "bg-background shadow-brutal-sm -translate-x-0.5 -translate-y-0.5"
-                      : disabled
-                        ? "bg-background opacity-90 cursor-default"
-                        : "bg-background hover:bg-foreground/5 cursor-pointer"
+                      : "bg-background hover:bg-foreground/5 cursor-pointer"
                   }`}
                 >
-                  {/* Live bar fill */}
                   <div
                     className="absolute inset-y-0 left-0 bg-lime/80 transition-all duration-700 ease-out"
                     style={{ width: `${widthPct}%` }}
@@ -169,38 +195,25 @@ export const DecisionSimulator = () => {
                         {c.toLocaleString("en-IN")} {c === 1 ? "voter" : "voters"} · {pct}%
                       </div>
                     </div>
-                    <div className={`text-xs font-bold px-2.5 py-1 rounded-md border-2 border-foreground ${
+                    <div className={`text-xs font-bold px-2.5 py-1 rounded-md border-2 border-foreground inline-flex items-center gap-1 ${
                       mine ? "bg-ink text-paper" : "bg-background text-foreground"
                     }`}>
-                      {submitting === g.id ? (
+                      {isPending ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      ) : mine ? "Voted" : myVote ? "—" : "Vote"}
+                      ) : mine ? (
+                        <><Check className="w-3.5 h-3.5" /> Voted · tap to undo</>
+                      ) : "Vote"}
                     </div>
                   </div>
                 </button>
               );
             })}
           </div>
-          {!myVote && (
-            <p className="text-[11px] text-muted-foreground mt-2">
-              One vote per device. Anonymous — we only count the totals.
-            </p>
-          )}
+          <p className="text-[11px] text-muted-foreground mt-2">
+            Pick as many groups as fit you. Tap again to un-vote. Anonymous — only totals are stored.
+          </p>
         </div>
 
-        {/* Turnout slider — kept as a what-if */}
-        <div>
-          <div className="flex justify-between text-sm font-semibold">
-            <span>Imagine your group's turnout</span>
-            <span className="font-mono text-lime">{turnout}%</span>
-          </div>
-          <Slider value={[turnout]} onValueChange={(v) => setTurnout(v[0])} max={100} step={1} className="mt-2" />
-          <div className="text-[11px] text-muted-foreground mt-1">
-            India's national avg turnout: ~67% (2024 LS). Drop yours below 50% and your group's voice in the result halves.
-          </div>
-        </div>
-
-        {/* Fun fact panel (replaces the old result panel) */}
         <div className="p-4 bg-background border-2 border-foreground rounded-xl">
           <div className="flex items-center gap-2">
             <div className="text-[11px] uppercase tracking-widest font-bold text-lime flex items-center gap-1.5">
