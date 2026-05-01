@@ -18,28 +18,37 @@ function writeLocal(p: UserProfile) {
   try { localStorage.setItem(KEY, JSON.stringify(p)); } catch {}
 }
 
+function clearLocal() {
+  try { localStorage.removeItem(KEY); } catch {}
+}
+
 export function useProfile() {
-  const { user } = useAuth();
-  const [profile, setProfile] = useState<UserProfile>(() => readLocal());
+  const { user, loading: authLoading } = useAuth();
+  // Start empty — never leak the previous session's data to a brand-new visitor
+  // before we've confirmed who (if anyone) is signed in.
+  const [profile, setProfile] = useState<UserProfile>(EMPTY_PROFILE);
   const [hydrated, setHydrated] = useState(false);
   const saveTimer = useRef<number | null>(null);
   const lastUserId = useRef<string | null>(null);
 
-  // On sign-in: pull cloud profile. If empty, push local up. If both, cloud wins.
+  // Auth-aware hydration: only restore profile data once we know there's a signed-in user.
   useEffect(() => {
     let cancelled = false;
+    if (authLoading) return;
+
     (async () => {
       if (!user) {
-        // Signed out: revert to local-only
-        if (lastUserId.current) {
-          // Came from a signed-in session — clear in-memory to avoid leaking between accounts
-          setProfile(readLocal());
-        }
+        // Anonymous visitor — wipe any leftover profile from a prior session on this device
+        // so the next person who opens the link doesn't see someone else's name/city/etc.
+        clearLocal();
+        if (cancelled) return;
+        setProfile(EMPTY_PROFILE);
         lastUserId.current = null;
         setHydrated(true);
         return;
       }
 
+      // Signed in — pull cloud profile
       lastUserId.current = user.id;
       const { data, error } = await supabase
         .from("profiles")
@@ -50,35 +59,30 @@ export function useProfile() {
       if (cancelled) return;
 
       if (error) {
-        console.warn("[profile] fetch failed, using local", error.message);
+        console.warn("[profile] fetch failed, using empty", error.message);
+        setProfile(EMPTY_PROFILE);
         setHydrated(true);
         return;
       }
 
       const cloud = (data?.data as UserProfile | undefined) ?? {};
-      const local = readLocal();
-      const cloudHasData = Object.keys(cloud).length > 0;
-
-      if (cloudHasData) {
-        const merged = { ...EMPTY_PROFILE, ...local, ...cloud }; // cloud wins
-        setProfile(merged);
-        writeLocal(merged);
-      } else {
-        // First time on this device — seed cloud with whatever is local
-        setProfile({ ...EMPTY_PROFILE, ...local });
-        if (Object.keys(local).length > 0) {
-          await supabase.from("profiles").upsert({ user_id: user.id, data: local });
-        }
-      }
+      const merged = { ...EMPTY_PROFILE, ...cloud };
+      setProfile(merged);
+      writeLocal(merged);
       setHydrated(true);
     })();
-    return () => { cancelled = true; };
-  }, [user?.id]);
 
-  // Persist locally always, and to cloud (debounced) when signed in
+    return () => { cancelled = true; };
+  }, [user?.id, authLoading]);
+
+  // Persist locally + to cloud (debounced) only when signed in
   useEffect(() => {
+    if (!hydrated) return;
+    if (!user) {
+      // never persist anonymous edits to disk — keeps the next visitor clean
+      return;
+    }
     writeLocal(profile);
-    if (!user || !hydrated) return;
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(async () => {
       const { error } = await supabase
@@ -96,9 +100,12 @@ export function useProfile() {
 
   const reset = async () => {
     setProfile(EMPTY_PROFILE);
-    writeLocal(EMPTY_PROFILE);
+    clearLocal();
     if (user) {
-      await supabase.from("profiles").upsert({ user_id: user.id, data: {} as any });
+      const { error } = await supabase
+        .from("profiles")
+        .upsert({ user_id: user.id, data: {} as any });
+      if (error) console.warn("[profile] reset failed", error.message);
     }
   };
 
