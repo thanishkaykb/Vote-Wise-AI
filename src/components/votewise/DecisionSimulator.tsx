@@ -1,154 +1,219 @@
-import { useMemo, useState } from "react";
-import { simulateOutcome } from "@/lib/civicEngine";
+import { useEffect, useMemo, useState } from "react";
 import { Slider } from "@/components/ui/slider";
-import { Zap, TrendingUp, Users } from "lucide-react";
+import { Zap, TrendingUp, Users, Sparkles, Loader2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
-// Real Indian races decided by tiny margins — grounds the simulation in reality.
-const REAL_MARGINS = [
-  { race: "Atingi-Mongchak (Arunachal, 2014)", margin: 1, unit: "vote" },
-  { race: "RK Nagar bypoll (TN, 2017) — NOTA exceeded margin", margin: 2017, unit: "votes (NOTA: 2,373)" },
-  { race: "Kanker (Chhattisgarh LS, 2019)", margin: 6914, unit: "votes" },
-  { race: "Machhalishahr (UP LS, 2019)", margin: 181, unit: "votes" },
+// Real Indian races decided by tiny margins — used as a "fun fact" rotator.
+const FUN_FACTS = [
+  "In 2008, C.P. Joshi (Rajasthan) lost by just 1 vote — and his own family hadn't voted that day.",
+  "Atingi-Mongchak (Arunachal, 2014) was won by a margin of exactly 1 vote.",
+  "RK Nagar bypoll, Tamil Nadu 2017: NOTA got 2,373 votes — more than the winning margin between several candidates.",
+  "Machhalishahr (UP, 2019 Lok Sabha) was decided by just 181 votes out of ~10 lakh cast.",
+  "India's 2024 Lok Sabha turnout was ~67% — meaning 1 in 3 eligible voters didn't show up. That's ~30 crore silent votes.",
+  "First-time voters (18–25) form ~20% of India's electorate but historically vote at lower rates than seniors.",
+  "Form 6 takes ~10 minutes online at voters.eci.gov.in — most rejections happen because of mismatched address proof.",
+  "VVPAT slips are stored for 45 days post-counting. You can request an audit if you suspect tampering.",
 ];
 
 const GROUPS = [
-  { id: "youth", label: "First-time voters (18–25)", default: 45 },
-  { id: "women", label: "Women voters in your area", default: 58 },
-  { id: "urban", label: "Urban professionals", default: 52 },
-  { id: "custom", label: "Your community / colony", default: 55 },
-];
+  { id: "youth", label: "First-time voters (18–25)", emoji: "🎓" },
+  { id: "women", label: "Women voters in your area", emoji: "👩" },
+  { id: "urban", label: "Urban professionals", emoji: "💼" },
+  { id: "custom", label: "Your community / colony", emoji: "🏘️" },
+] as const;
+
+type GroupId = typeof GROUPS[number]["id"];
+
+const VOTED_KEY = "votewise.poll.voted.v1";
+const VOTER_KEY = "votewise.poll.voter.v1";
+
+function getVoterKey() {
+  let k = localStorage.getItem(VOTER_KEY);
+  if (!k) {
+    k = (crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)) + "-" + Date.now();
+    localStorage.setItem(VOTER_KEY, k);
+  }
+  return k;
+}
 
 export const DecisionSimulator = () => {
-  const [groupId, setGroupId] = useState("youth");
   const [turnout, setTurnout] = useState(45);
-  const [lean, setLean] = useState(60);
-  const [vote, setVote] = useState<"vote" | "skip">("vote");
-  const [seatSize, setSeatSize] = useState(150000); // typical assembly seat electorate
+  const [counts, setCounts] = useState<Record<GroupId, number>>({ youth: 0, women: 0, urban: 0, custom: 0 });
+  const [myVote, setMyVote] = useState<GroupId | null>(null);
+  const [submitting, setSubmitting] = useState<GroupId | null>(null);
+  const [factIndex, setFactIndex] = useState(() => Math.floor(Math.random() * FUN_FACTS.length));
 
-  const group = GROUPS.find((g) => g.id === groupId)!;
+  // Initial fetch + realtime subscription
+  useEffect(() => {
+    const stored = localStorage.getItem(VOTED_KEY) as GroupId | null;
+    if (stored) setMyVote(stored);
 
-  // If user skips, model a -8pp drop in their *group's* turnout (one absent voter
-  // also discourages their immediate circle: family, roommates).
-  const effectiveTurnout = vote === "vote" ? turnout : Math.max(0, turnout - 8);
-  const r = useMemo(() => simulateOutcome(effectiveTurnout, lean), [effectiveTurnout, lean]);
-  const baseline = useMemo(() => simulateOutcome(turnout, lean), [turnout, lean]);
-  const swing = r.a - baseline.a;
-  const votesShifted = Math.round((Math.abs(swing) / 100) * seatSize);
+    const fetchCounts = async () => {
+      const { data, error } = await supabase
+        .from("poll_votes")
+        .select("group_id");
+      if (error) {
+        console.warn("[poll] fetch failed", error.message);
+        return;
+      }
+      const next: Record<GroupId, number> = { youth: 0, women: 0, urban: 0, custom: 0 };
+      for (const row of data ?? []) {
+        const g = row.group_id as GroupId;
+        if (g in next) next[g]++;
+      }
+      setCounts(next);
+    };
+    fetchCounts();
 
-  const real = REAL_MARGINS[Math.floor(Math.random() * REAL_MARGINS.length)];
+    const channel = supabase
+      .channel("poll_votes_live")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "poll_votes" },
+        (payload) => {
+          const g = (payload.new as any).group_id as GroupId;
+          setCounts((prev) => (g in prev ? { ...prev, [g]: prev[g] + 1 } : prev));
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  const total = counts.youth + counts.women + counts.urban + counts.custom;
+  const maxCount = Math.max(1, counts.youth, counts.women, counts.urban, counts.custom);
+
+  const castVote = async (g: GroupId) => {
+    if (myVote || submitting) return;
+    setSubmitting(g);
+    const voter_key = getVoterKey();
+    const { error } = await supabase
+      .from("poll_votes")
+      .insert({ voter_key, group_id: g });
+    setSubmitting(null);
+    if (error) {
+      // duplicate vote (unique constraint) — treat as already voted
+      if (error.code === "23505") {
+        localStorage.setItem(VOTED_KEY, g);
+        setMyVote(g);
+        toast("You've already voted in this poll on this device.");
+        return;
+      }
+      toast.error("Couldn't record your vote — try again.");
+      return;
+    }
+    localStorage.setItem(VOTED_KEY, g);
+    setMyVote(g);
+    toast.success("Vote recorded · live poll updated");
+  };
+
+  const fact = FUN_FACTS[factIndex];
 
   return (
     <section className="brutal-card p-6 bg-card">
       <div className="flex items-center gap-2 mb-1 flex-wrap">
-        <div className="chip bg-lime text-ink border-foreground"><Zap className="w-3 h-3" /> Live simulator</div>
+        <div className="chip bg-lime text-ink border-foreground"><Zap className="w-3 h-3" /> Live poll</div>
         <div className="chip bg-sky text-white border-foreground"><TrendingUp className="w-3 h-3" /> India context</div>
       </div>
       <h2 className="font-display font-bold text-xl mt-2">Does your one vote actually matter?</h2>
       <p className="text-sm text-muted-foreground">
-        Pick a group, set their turnout, decide if you show up. Watch the seat flip in real time.
+        Vote once for the group you belong to. Watch the live tally grow as others around the country join in.
       </p>
 
       <div className="mt-5 grid gap-5">
-        {/* Group selector */}
+        {/* Live group poll */}
         <div>
-          <div className="text-xs uppercase tracking-wide font-bold flex items-center gap-1.5 mb-2">
+          <div className="text-xs uppercase tracking-wide font-bold flex items-center gap-1.5 mb-3">
             <Users className="w-3.5 h-3.5" /> Which group are you in?
+            <span className="ml-auto font-mono text-muted-foreground normal-case tracking-normal">
+              {total.toLocaleString("en-IN")} {total === 1 ? "vote" : "votes"} cast
+            </span>
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            {GROUPS.map((g) => (
-              <button
-                key={g.id}
-                onClick={() => { setGroupId(g.id); setTurnout(g.default); }}
-                className={`p-2.5 rounded-xl border-2 border-foreground text-left text-sm font-semibold transition-all ${
-                  groupId === g.id
-                    ? "bg-lime text-ink shadow-brutal-sm -translate-x-0.5 -translate-y-0.5"
-                    : "bg-background hover:bg-foreground/5"
-                }`}
-              >
-                {g.label}
-              </button>
-            ))}
+          <div className="space-y-2.5">
+            {GROUPS.map((g) => {
+              const c = counts[g.id];
+              const pct = total > 0 ? Math.round((c / total) * 100) : 0;
+              const widthPct = total > 0 ? Math.max(4, (c / maxCount) * 100) : 0;
+              const mine = myVote === g.id;
+              const disabled = !!myVote || submitting !== null;
+              return (
+                <button
+                  key={g.id}
+                  onClick={() => castVote(g.id)}
+                  disabled={disabled && !mine}
+                  className={`relative w-full overflow-hidden p-3 rounded-xl border-2 border-foreground text-left transition-all ${
+                    mine
+                      ? "bg-background shadow-brutal-sm -translate-x-0.5 -translate-y-0.5"
+                      : disabled
+                        ? "bg-background opacity-90 cursor-default"
+                        : "bg-background hover:bg-foreground/5 cursor-pointer"
+                  }`}
+                >
+                  {/* Live bar fill */}
+                  <div
+                    className="absolute inset-y-0 left-0 bg-lime/80 transition-all duration-700 ease-out"
+                    style={{ width: `${widthPct}%` }}
+                    aria-hidden
+                  />
+                  <div className="relative flex items-center gap-3">
+                    <div className="text-xl">{g.emoji}</div>
+                    <div className="flex-1">
+                      <div className={`font-semibold text-sm ${widthPct > 30 ? "text-ink" : "text-foreground"}`}>
+                        {g.label}
+                        {mine && <span className="ml-2 text-[11px] uppercase tracking-wide font-bold bg-ink text-paper px-1.5 py-0.5 rounded">Your vote</span>}
+                      </div>
+                      <div className={`text-[11px] mt-0.5 ${widthPct > 30 ? "text-ink/70" : "text-muted-foreground"}`}>
+                        {c.toLocaleString("en-IN")} {c === 1 ? "voter" : "voters"} · {pct}%
+                      </div>
+                    </div>
+                    <div className={`text-xs font-bold px-2.5 py-1 rounded-md border-2 border-foreground ${
+                      mine ? "bg-ink text-paper" : "bg-background text-foreground"
+                    }`}>
+                      {submitting === g.id ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : mine ? "Voted" : myVote ? "—" : "Vote"}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
           </div>
+          {!myVote && (
+            <p className="text-[11px] text-muted-foreground mt-2">
+              One vote per device. Anonymous — we only count the totals.
+            </p>
+          )}
         </div>
 
+        {/* Turnout slider — kept as a what-if */}
         <div>
           <div className="flex justify-between text-sm font-semibold">
-            <span>{group.label} turnout</span>
+            <span>Imagine your group's turnout</span>
             <span className="font-mono text-lime">{turnout}%</span>
           </div>
           <Slider value={[turnout]} onValueChange={(v) => setTurnout(v[0])} max={100} step={1} className="mt-2" />
-          <div className="text-[11px] text-muted-foreground mt-1">India's national avg turnout: ~67% (2024 LS)</div>
-        </div>
-
-        <div>
-          <div className="flex justify-between text-sm font-semibold">
-            <span>This group leans toward Candidate A</span>
-            <span className="font-mono text-lime">{lean}%</span>
+          <div className="text-[11px] text-muted-foreground mt-1">
+            India's national avg turnout: ~67% (2024 LS). Drop yours below 50% and your group's voice in the result halves.
           </div>
-          <Slider value={[lean]} onValueChange={(v) => setLean(v[0])} max={100} step={1} className="mt-2" />
         </div>
 
-        <div>
-          <div className="text-xs uppercase tracking-wide font-bold mb-2">Your choice on polling day</div>
-          <div className="grid grid-cols-2 gap-3">
+        {/* Fun fact panel (replaces the old result panel) */}
+        <div className="p-4 bg-background border-2 border-foreground rounded-xl">
+          <div className="flex items-center gap-2">
+            <div className="text-[11px] uppercase tracking-widest font-bold text-lime flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5" /> Did you know?
+            </div>
             <button
-              onClick={() => setVote("vote")}
-              className={`p-3 rounded-xl border-2 border-foreground font-bold transition-all ${
-                vote === "vote" ? "bg-lime text-ink shadow-brutal-sm -translate-x-0.5 -translate-y-0.5" : "bg-background hover:bg-foreground/5"
-              }`}
+              onClick={() => setFactIndex((i) => (i + 1) % FUN_FACTS.length)}
+              className="ml-auto text-[11px] font-bold uppercase tracking-wide px-2 py-1 rounded-md border-2 border-foreground hover:bg-lime hover:text-ink transition-colors"
             >
-              🗳️ I show up & vote
-            </button>
-            <button
-              onClick={() => setVote("skip")}
-              className={`p-3 rounded-xl border-2 border-foreground font-bold transition-all ${
-                vote === "skip" ? "bg-coral text-white shadow-brutal-sm -translate-x-0.5 -translate-y-0.5" : "bg-background hover:bg-foreground/5"
-              }`}
-            >
-              😴 I skip / "doesn't matter"
+              Next fact
             </button>
           </div>
-        </div>
-
-        {/* Outcome bar */}
-        <div className="mt-2">
-          <div className="flex h-12 rounded-xl border-2 border-foreground overflow-hidden font-display font-bold">
-            <div
-              className="bg-sky text-white flex items-center justify-center transition-all duration-500 min-w-[20%]"
-              style={{ width: `${r.a}%` }}
-            >
-              A · {r.a}%
-            </div>
-            <div
-              className="bg-coral text-white flex items-center justify-center transition-all duration-500 min-w-[20%]"
-              style={{ width: `${r.b}%` }}
-            >
-              B · {r.b}%
-            </div>
-          </div>
-
-          <div className="mt-3 p-4 bg-background border-2 border-foreground rounded-xl">
-            <div className="text-[11px] uppercase tracking-widest font-bold text-lime">Result</div>
-            <div className="font-display font-bold text-lg mt-0.5 text-foreground">
-              Candidate {r.winner} wins
-              {swing !== 0 && (
-                <span className="ml-2 text-sm font-mono text-lime">
-                  ({swing > 0 ? "+" : ""}{swing}pp swing vs. you-voting baseline)
-                </span>
-              )}
-            </div>
-            <div className="text-xs text-muted-foreground mt-1.5">
-              {vote === "skip" ? (
-                <>You sitting out shifts <span className="font-bold text-coral">~{votesShifted.toLocaleString("en-IN")} votes</span> in a 1.5L-voter seat. That's enough to flip many real Indian races.</>
-              ) : (
-                <>Voting puts your group's voice on the record. Each vote stacks — see the real margin below.</>
-              )}
-            </div>
-            <div className="mt-3 pt-3 border-t border-foreground/20">
-              <div className="text-[11px] uppercase tracking-widest font-bold text-sky">Real margin · India</div>
-              <div className="text-xs text-foreground mt-0.5"><span className="font-bold">{real.race}</span> — won by just {real.margin.toLocaleString("en-IN")} {real.unit}.</div>
-            </div>
-          </div>
+          <p className="text-sm text-foreground mt-2 leading-relaxed">{fact}</p>
         </div>
       </div>
     </section>
