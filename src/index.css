@@ -109,6 +109,19 @@
   .prose-chat h1, .prose-chat h2, .prose-chat h3 { @apply font-display font-bold mt-2 mb-1; }
 }
 
+/* Readability: white / paper-coloured text on lime backgrounds gets a soft
+   black shadow so it never washes out. */
+@layer utilities {
+  .bg-lime .text-white,
+  .bg-lime .text-paper,
+  .bg-lime .text-foreground,
+  .brutal-card-lime .text-white,
+  .brutal-card-lime .text-paper,
+  .brutal-card-lime .text-foreground {
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55), 0 0 1px rgba(0, 0, 0, 0.4);
+  }
+}
+
 @keyframes marquee {
   from { transform: translateX(0); }
   to { transform: translateX(-50%); }
