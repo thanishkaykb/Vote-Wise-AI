@@ -127,15 +127,8 @@ const Index = () => {
           <Timeline city={profile.city} />
         </Section>
 
-        <Section id="booth" eyebrow="08 · Booth" title="Pick your polling booth">
-          <BoothFinder
-            city={profile.city}
-            selectedBoothId={profile.boothId}
-            onSelect={(boothId, boothName) => {
-              update({ boothId, boothName, knowsBooth: true });
-              toast.success(`Booth selected: ${boothName} 📍`);
-            }}
-          />
+        <Section id="booth" eyebrow="08 · Booth" title="Your predicted polling booth">
+          <BoothFinder city={profile.city} />
         </Section>
 
         <Section id="assistant" eyebrow="09 · Assistant" title="Ask anything — civic or otherwise">
