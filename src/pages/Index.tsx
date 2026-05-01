@@ -20,6 +20,13 @@ const Index = () => {
   const [eli15, setEli15] = useState(false);
   const state = useMemo(() => deriveState(profile), [profile]);
 
+  // Booth selection is now a prediction — auto-mark "knows booth" once city is set
+  useEffect(() => {
+    if (profile.city && profile.city.trim().length > 1 && !profile.knowsBooth) {
+      update({ knowsBooth: true });
+    }
+  }, [profile.city, profile.knowsBooth, update]);
+
   // Force top of page on initial load — never auto-scroll to bottom
   useEffect(() => {
     if ("scrollRestoration" in window.history) {
