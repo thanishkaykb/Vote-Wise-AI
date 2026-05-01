@@ -14,6 +14,27 @@ export type Database = {
   }
   public: {
     Tables: {
+      poll_votes: {
+        Row: {
+          created_at: string
+          group_id: string
+          id: string
+          voter_key: string
+        }
+        Insert: {
+          created_at?: string
+          group_id: string
+          id?: string
+          voter_key: string
+        }
+        Update: {
+          created_at?: string
+          group_id?: string
+          id?: string
+          voter_key?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           data: Json

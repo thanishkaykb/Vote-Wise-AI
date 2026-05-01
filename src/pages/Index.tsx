@@ -20,6 +20,13 @@ const Index = () => {
   const [eli15, setEli15] = useState(false);
   const state = useMemo(() => deriveState(profile), [profile]);
 
+  // Booth selection is now a prediction — auto-mark "knows booth" once city is set
+  useEffect(() => {
+    if (profile.city && profile.city.trim().length > 1 && !profile.knowsBooth) {
+      update({ knowsBooth: true });
+    }
+  }, [profile.city, profile.knowsBooth, update]);
+
   // Force top of page on initial load — never auto-scroll to bottom
   useEffect(() => {
     if ("scrollRestoration" in window.history) {
@@ -127,15 +134,8 @@ const Index = () => {
           <Timeline city={profile.city} />
         </Section>
 
-        <Section id="booth" eyebrow="08 · Booth" title="Pick your polling booth">
-          <BoothFinder
-            city={profile.city}
-            selectedBoothId={profile.boothId}
-            onSelect={(boothId, boothName) => {
-              update({ boothId, boothName, knowsBooth: true });
-              toast.success(`Booth selected: ${boothName} 📍`);
-            }}
-          />
+        <Section id="booth" eyebrow="08 · Booth" title="Your predicted polling booth">
+          <BoothFinder city={profile.city} />
         </Section>
 
         <Section id="assistant" eyebrow="09 · Assistant" title="Ask anything — civic or otherwise">
