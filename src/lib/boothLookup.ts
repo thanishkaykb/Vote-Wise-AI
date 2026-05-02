@@ -91,14 +91,19 @@ async function fetchOverpass(lat: number, lon: number, radiusM: number, signal?:
   };
 }
 
-function humanType(amenity?: string) {
-  switch (amenity) {
-    case "school": return "School";
-    case "community_centre": return "Community Hall";
-    case "library": return "Library";
-    case "townhall": return "Town Hall";
-    default: return "Public Building";
-  }
+function humanType(tags: Record<string, string> = {}) {
+  const a = tags.amenity;
+  const b = tags.building;
+  const o = tags.office;
+  if (a === "school" || b === "school") return "School";
+  if (a === "college" || b === "college") return "College";
+  if (a === "university" || b === "university") return "University";
+  if (a === "kindergarten") return "Anganwadi / Pre-school";
+  if (a === "community_centre") return "Community Hall";
+  if (a === "library") return "Library";
+  if (a === "townhall") return "Town Hall";
+  if (o === "government" || b === "government" || b === "civic" || b === "public" || a === "public_building") return "Govt Office";
+  return "Public Building";
 }
 
 function buildAddress(tags: Record<string, string> = {}) {
