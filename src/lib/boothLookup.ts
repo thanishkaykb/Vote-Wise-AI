@@ -54,21 +54,19 @@ async function geocode(city: string, signal?: AbortSignal): Promise<GeoResult | 
 }
 
 function buildOverpassQuery(lat: number, lon: number, radiusM: number) {
-  // Schools, community halls, libraries, town halls, govt offices — the
-  // typical building types ECI assigns booths to.
+  // Schools, colleges, community halls, libraries, town halls, govt offices,
+  // kindergartens — the typical building types ECI assigns booths to.
   return `
-    [out:json][timeout:20];
+    [out:json][timeout:25];
     (
-      node["amenity"="school"](around:${radiusM},${lat},${lon});
-      way["amenity"="school"](around:${radiusM},${lat},${lon});
-      node["amenity"="community_centre"](around:${radiusM},${lat},${lon});
-      way["amenity"="community_centre"](around:${radiusM},${lat},${lon});
-      node["amenity"="library"](around:${radiusM},${lat},${lon});
-      way["amenity"="library"](around:${radiusM},${lat},${lon});
-      node["amenity"="townhall"](around:${radiusM},${lat},${lon});
-      way["amenity"="townhall"](around:${radiusM},${lat},${lon});
+      node["amenity"~"^(school|college|university|kindergarten|community_centre|library|townhall|public_building)$"](around:${radiusM},${lat},${lon});
+      way["amenity"~"^(school|college|university|kindergarten|community_centre|library|townhall|public_building)$"](around:${radiusM},${lat},${lon});
+      node["building"~"^(school|college|university|public|civic|government)$"](around:${radiusM},${lat},${lon});
+      way["building"~"^(school|college|university|public|civic|government)$"](around:${radiusM},${lat},${lon});
+      node["office"="government"](around:${radiusM},${lat},${lon});
+      way["office"="government"](around:${radiusM},${lat},${lon});
     );
-    out center tags 30;
+    out center tags 50;
   `;
 }
 
@@ -93,14 +91,19 @@ async function fetchOverpass(lat: number, lon: number, radiusM: number, signal?:
   };
 }
 
-function humanType(amenity?: string) {
-  switch (amenity) {
-    case "school": return "School";
-    case "community_centre": return "Community Hall";
-    case "library": return "Library";
-    case "townhall": return "Town Hall";
-    default: return "Public Building";
-  }
+function humanType(tags: Record<string, string> = {}) {
+  const a = tags.amenity;
+  const b = tags.building;
+  const o = tags.office;
+  if (a === "school" || b === "school") return "School";
+  if (a === "college" || b === "college") return "College";
+  if (a === "university" || b === "university") return "University";
+  if (a === "kindergarten") return "Anganwadi / Pre-school";
+  if (a === "community_centre") return "Community Hall";
+  if (a === "library") return "Library";
+  if (a === "townhall") return "Town Hall";
+  if (o === "government" || b === "government" || b === "civic" || b === "public" || a === "public_building") return "Govt Office";
+  return "Public Building";
 }
 
 function buildAddress(tags: Record<string, string> = {}) {
@@ -149,13 +152,13 @@ export async function predictBooths(city: string, signal?: AbortSignal): Promise
       const lon = el.lon ?? el.center?.lon;
       if (lat == null || lon == null) return null;
       const tags = el.tags ?? {};
-      const name = tags.name || tags["name:en"] || `Unnamed ${humanType(tags.amenity)}`;
+      const name = tags.name || tags["name:en"] || `Unnamed ${humanType(tags)}`;
       return {
         id: `${el.type}-${el.id}`,
         name,
         address: buildAddress(tags),
         distanceKm: Math.round(haversineKm(geo.lat, geo.lon, lat, lon) * 10) / 10,
-        type: humanType(tags.amenity),
+        type: humanType(tags),
         lat,
         lon,
       } as PredictedBooth;
