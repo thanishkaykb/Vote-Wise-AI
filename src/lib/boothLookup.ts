@@ -19,6 +19,13 @@ export type PredictedBooth = {
 
 type GeoResult = { lat: number; lon: number; displayName: string };
 
+type NominatimSearchResult = {
+  lat: string;
+  lon: string;
+  display_name: string;
+  importance?: number;
+};
+
 const NOMINATIM_SEARCH = "https://nominatim.openstreetmap.org/search";
 const OVERPASS_ENDPOINTS = [
   "https://overpass-api.de/api/interpreter",
@@ -28,6 +35,49 @@ const OVERPASS_ENDPOINTS = [
 
 const cache = new Map<string, { ts: number; booths: PredictedBooth[]; geo: GeoResult }>();
 const TTL = 1000 * 60 * 30;
+
+function uniqueStrings(values: string[]) {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function buildGeocodeCandidates(query: string) {
+  const trimmed = query.trim().replace(/\s+/g, " ");
+  const withoutCountry = trimmed.replace(/,?\s*india$/i, "").trim();
+  const withoutPin = withoutCountry.replace(/\b\d{6}\b/g, "").replace(/\s+,/g, ",").replace(/\s{2,}/g, " ").trim();
+  const parts = withoutPin.split(",").map((part) => part.trim()).filter(Boolean);
+
+  const candidates = [
+    trimmed,
+    withoutCountry,
+    `${withoutCountry}, India`,
+    withoutPin,
+    `${withoutPin}, India`,
+  ];
+
+  for (let start = 0; start < parts.length; start += 1) {
+    const partial = parts.slice(start).join(", ");
+    candidates.push(partial, `${partial}, India`);
+  }
+
+  if (parts.length >= 2) {
+    const tail = parts.slice(-2).join(", ");
+    candidates.push(tail, `${tail}, India`);
+  }
+
+  if (parts.length >= 3) {
+    const tail = parts.slice(-3).join(", ");
+    candidates.push(tail, `${tail}, India`);
+  }
+
+  return uniqueStrings(candidates);
+}
+
+async function searchNominatim(query: string, signal?: AbortSignal) {
+  const url = `${NOMINATIM_SEARCH}?q=${encodeURIComponent(query)}&format=jsonv2&limit=5&addressdetails=1&countrycodes=in`;
+  const res = await fetch(url, { signal, headers: { Accept: "application/json" } });
+  if (!res.ok) return [];
+  return (await res.json()) as NominatimSearchResult[];
+}
 
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number) {
   const R = 6371;
@@ -41,16 +91,21 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number) {
 }
 
 async function geocode(city: string, signal?: AbortSignal): Promise<GeoResult | null> {
-  const url = `${NOMINATIM_SEARCH}?q=${encodeURIComponent(city + ", India")}&format=json&limit=1&addressdetails=1`;
-  const res = await fetch(url, { signal, headers: { Accept: "application/json" } });
-  if (!res.ok) return null;
-  const data = (await res.json()) as Array<{ lat: string; lon: string; display_name: string }>;
-  if (!data?.length) return null;
-  return {
-    lat: parseFloat(data[0].lat),
-    lon: parseFloat(data[0].lon),
-    displayName: data[0].display_name,
-  };
+  for (const candidate of buildGeocodeCandidates(city)) {
+    const data = await searchNominatim(candidate, signal);
+    if (!data.length) continue;
+
+    const best = [...data].sort((a, b) => (b.importance ?? 0) - (a.importance ?? 0))[0];
+    if (!best) continue;
+
+    return {
+      lat: parseFloat(best.lat),
+      lon: parseFloat(best.lon),
+      displayName: best.display_name,
+    };
+  }
+
+  return null;
 }
 
 function buildOverpassQuery(lat: number, lon: number, radiusM: number) {
