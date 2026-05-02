@@ -54,21 +54,19 @@ async function geocode(city: string, signal?: AbortSignal): Promise<GeoResult | 
 }
 
 function buildOverpassQuery(lat: number, lon: number, radiusM: number) {
-  // Schools, community halls, libraries, town halls, govt offices — the
-  // typical building types ECI assigns booths to.
+  // Schools, colleges, community halls, libraries, town halls, govt offices,
+  // kindergartens — the typical building types ECI assigns booths to.
   return `
-    [out:json][timeout:20];
+    [out:json][timeout:25];
     (
-      node["amenity"="school"](around:${radiusM},${lat},${lon});
-      way["amenity"="school"](around:${radiusM},${lat},${lon});
-      node["amenity"="community_centre"](around:${radiusM},${lat},${lon});
-      way["amenity"="community_centre"](around:${radiusM},${lat},${lon});
-      node["amenity"="library"](around:${radiusM},${lat},${lon});
-      way["amenity"="library"](around:${radiusM},${lat},${lon});
-      node["amenity"="townhall"](around:${radiusM},${lat},${lon});
-      way["amenity"="townhall"](around:${radiusM},${lat},${lon});
+      node["amenity"~"^(school|college|university|kindergarten|community_centre|library|townhall|public_building)$"](around:${radiusM},${lat},${lon});
+      way["amenity"~"^(school|college|university|kindergarten|community_centre|library|townhall|public_building)$"](around:${radiusM},${lat},${lon});
+      node["building"~"^(school|college|university|public|civic|government)$"](around:${radiusM},${lat},${lon});
+      way["building"~"^(school|college|university|public|civic|government)$"](around:${radiusM},${lat},${lon});
+      node["office"="government"](around:${radiusM},${lat},${lon});
+      way["office"="government"](around:${radiusM},${lat},${lon});
     );
-    out center tags 30;
+    out center tags 50;
   `;
 }
 
