@@ -1,29 +1,33 @@
 // Real-time booth prediction using OpenStreetMap.
-// Indian polling booths are almost always at: schools, community halls,
-// panchayat offices, anganwadis, libraries. We:
-//   1) Geocode the user's city/locality via Nominatim
-//   2) Query Overpass for amenity=school|community_centre|library near it
-//   3) Pick the 3 closest, sorted by distance
-// All free, no API key, runs from the browser.
+// Strategy:
+//   1) Geocode user's city/locality via Nominatim (India-biased)
+//   2) Query Overpass for schools/community halls/govt offices in expanding radii
+//   3) If Overpass is empty or fails, FALL BACK to Nominatim POI search
+//      (which works even when Overpass is rate-limited or the area is
+//      under-tagged with amenity=*)
+//   4) Return up to 3 closest, sorted by distance.
 
 export type PredictedBooth = {
   id: string;
   name: string;
   address: string;
   distanceKm: number;
-  type: string; // "school", "community_centre", etc.
+  type: string;
   lat: number;
   lon: number;
 };
 
 type GeoResult = { lat: number; lon: number; displayName: string };
 
-const NOMINATIM = "https://nominatim.openstreetmap.org/search";
-const OVERPASS = "https://overpass-api.de/api/interpreter";
+const NOMINATIM_SEARCH = "https://nominatim.openstreetmap.org/search";
+const OVERPASS_ENDPOINTS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass.openstreetmap.ru/api/interpreter",
+];
 
-// Simple in-memory cache so we don't hammer the APIs while typing.
 const cache = new Map<string, { ts: number; booths: PredictedBooth[]; geo: GeoResult }>();
-const TTL = 1000 * 60 * 30; // 30 min
+const TTL = 1000 * 60 * 30;
 
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number) {
   const R = 6371;
@@ -37,12 +41,8 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number) {
 }
 
 async function geocode(city: string, signal?: AbortSignal): Promise<GeoResult | null> {
-  // bias to India for accuracy
-  const url = `${NOMINATIM}?q=${encodeURIComponent(city + ", India")}&format=json&limit=1&addressdetails=1`;
-  const res = await fetch(url, {
-    signal,
-    headers: { Accept: "application/json" },
-  });
+  const url = `${NOMINATIM_SEARCH}?q=${encodeURIComponent(city + ", India")}&format=json&limit=1&addressdetails=1`;
+  const res = await fetch(url, { signal, headers: { Accept: "application/json" } });
   if (!res.ok) return null;
   const data = (await res.json()) as Array<{ lat: string; lon: string; display_name: string }>;
   if (!data?.length) return null;
@@ -54,8 +54,6 @@ async function geocode(city: string, signal?: AbortSignal): Promise<GeoResult | 
 }
 
 function buildOverpassQuery(lat: number, lon: number, radiusM: number) {
-  // Schools, colleges, community halls, libraries, town halls, govt offices,
-  // kindergartens — the typical building types ECI assigns booths to.
   return `
     [out:json][timeout:25];
     (
@@ -66,29 +64,122 @@ function buildOverpassQuery(lat: number, lon: number, radiusM: number) {
       node["office"="government"](around:${radiusM},${lat},${lon});
       way["office"="government"](around:${radiusM},${lat},${lon});
     );
-    out center tags 50;
+    out center tags 60;
   `;
 }
 
-async function fetchOverpass(lat: number, lon: number, radiusM: number, signal?: AbortSignal) {
+type OverpassEl = {
+  id: number;
+  type: "node" | "way" | "relation";
+  lat?: number;
+  lon?: number;
+  center?: { lat: number; lon: number };
+  tags?: Record<string, string>;
+};
+
+async function fetchOverpass(
+  lat: number,
+  lon: number,
+  radiusM: number,
+  signal?: AbortSignal
+): Promise<OverpassEl[]> {
   const body = buildOverpassQuery(lat, lon, radiusM);
-  const res = await fetch(OVERPASS, {
-    method: "POST",
-    body,
-    signal,
-    headers: { "Content-Type": "text/plain" },
-  });
-  if (!res.ok) throw new Error(`Overpass ${res.status}`);
-  return (await res.json()) as {
-    elements: Array<{
-      id: number;
-      type: "node" | "way" | "relation";
-      lat?: number;
-      lon?: number;
-      center?: { lat: number; lon: number };
-      tags?: Record<string, string>;
-    }>;
-  };
+  for (const url of OVERPASS_ENDPOINTS) {
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        body,
+        signal,
+        headers: { "Content-Type": "text/plain" },
+      });
+      if (!res.ok) continue;
+      const json = (await res.json()) as { elements?: OverpassEl[] };
+      if (json.elements && json.elements.length) return json.elements;
+    } catch (e) {
+      if ((e as any)?.name === "AbortError") throw e;
+      // try next endpoint
+    }
+  }
+  return [];
+}
+
+// Nominatim fallback — search for schools/colleges near the geocoded point.
+// This works even when Overpass is dead or the area lacks amenity=* tags.
+async function fetchNominatimPOIs(
+  geo: GeoResult,
+  signal?: AbortSignal
+): Promise<PredictedBooth[]> {
+  // viewbox: ~10km box around the point
+  const dLat = 0.09; // ~10 km
+  const dLon = 0.09;
+  const left = geo.lon - dLon;
+  const right = geo.lon + dLon;
+  const top = geo.lat + dLat;
+  const bottom = geo.lat - dLat;
+  const viewbox = `${left},${top},${right},${bottom}`;
+
+  const queries = [
+    "school",
+    "government school",
+    "higher secondary school",
+    "community hall",
+    "panchayat office",
+    "anganwadi",
+  ];
+
+  const results: PredictedBooth[] = [];
+  const seen = new Set<string>();
+
+  for (const q of queries) {
+    if (results.length >= 8) break;
+    const url =
+      `${NOMINATIM_SEARCH}?q=${encodeURIComponent(q)}` +
+      `&format=json&limit=10&addressdetails=1&bounded=1&viewbox=${encodeURIComponent(viewbox)}` +
+      `&countrycodes=in`;
+    try {
+      const res = await fetch(url, { signal, headers: { Accept: "application/json" } });
+      if (!res.ok) continue;
+      const data = (await res.json()) as Array<{
+        place_id: number;
+        lat: string;
+        lon: string;
+        display_name: string;
+        type?: string;
+        class?: string;
+        address?: Record<string, string>;
+      }>;
+      for (const r of data) {
+        const lat = parseFloat(r.lat);
+        const lon = parseFloat(r.lon);
+        const name = r.display_name.split(",")[0].trim();
+        const key = `${name}|${Math.round(lat * 1000)}|${Math.round(lon * 1000)}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const ad = r.address ?? {};
+        const address =
+          [ad.road, ad.suburb || ad.neighbourhood, ad.city || ad.town || ad.village]
+            .filter(Boolean)
+            .join(", ") || r.display_name.split(",").slice(1, 4).join(",").trim();
+        results.push({
+          id: `nom-${r.place_id}`,
+          name,
+          address: address || "Address not on file",
+          distanceKm: Math.round(haversineKm(geo.lat, geo.lon, lat, lon) * 10) / 10,
+          type:
+            q.includes("school") ? "School" :
+            q.includes("community") ? "Community Hall" :
+            q.includes("panchayat") ? "Panchayat Office" :
+            q.includes("anganwadi") ? "Anganwadi / Pre-school" :
+            "Public Building",
+          lat,
+          lon,
+        });
+      }
+    } catch (e) {
+      if ((e as any)?.name === "AbortError") throw e;
+    }
+  }
+  return results;
 }
 
 function humanType(tags: Record<string, string> = {}) {
@@ -114,14 +205,13 @@ function buildAddress(tags: Record<string, string> = {}) {
     tags["addr:city"] || tags["addr:town"] || tags["addr:village"],
   ].filter(Boolean);
   if (parts.length) return parts.join(", ");
-  // fallback: any locality-ish tag
   return tags["addr:full"] || tags["operator"] || "Address not on file";
 }
 
-export async function predictBooths(city: string, signal?: AbortSignal): Promise<{
-  booths: PredictedBooth[];
-  geo: GeoResult;
-} | null> {
+export async function predictBooths(
+  city: string,
+  signal?: AbortSignal
+): Promise<{ booths: PredictedBooth[]; geo: GeoResult } | null> {
   const key = city.trim().toLowerCase();
   if (!key) return null;
 
@@ -133,20 +223,22 @@ export async function predictBooths(city: string, signal?: AbortSignal): Promise
   const geo = await geocode(city, signal);
   if (!geo) return null;
 
-  // Try expanding radii until we have ≥3 candidates
-  const radii = [1500, 3000, 6000, 12000];
-  let elements: Awaited<ReturnType<typeof fetchOverpass>>["elements"] = [];
+  // 1) Try Overpass with expanding radii
+  const radii = [2000, 5000, 10000, 20000];
+  let elements: OverpassEl[] = [];
   for (const r of radii) {
     try {
       const res = await fetchOverpass(geo.lat, geo.lon, r, signal);
-      elements = res.elements ?? [];
-      if (elements.length >= 3) break;
-    } catch {
-      // fall through to next radius / give up
+      if (res.length) {
+        elements = res;
+        if (res.length >= 3) break;
+      }
+    } catch (e) {
+      if ((e as any)?.name === "AbortError") return null;
     }
   }
 
-  const booths: PredictedBooth[] = elements
+  let booths: PredictedBooth[] = elements
     .map((el) => {
       const lat = el.lat ?? el.center?.lat;
       const lon = el.lon ?? el.center?.lon;
@@ -163,9 +255,27 @@ export async function predictBooths(city: string, signal?: AbortSignal): Promise
         lon,
       } as PredictedBooth;
     })
-    .filter((b): b is PredictedBooth => b !== null && !!b.name)
-    // de-dup by name+address
-    .filter((b, i, arr) => arr.findIndex((x) => x.name === b.name && x.address === b.address) === i)
+    .filter((b): b is PredictedBooth => b !== null && !!b.name);
+
+  // 2) Fallback to Nominatim POI search if Overpass came back empty
+  if (booths.length < 3) {
+    try {
+      const fallback = await fetchNominatimPOIs(geo, signal);
+      const merged = [...booths, ...fallback];
+      // de-dup by name
+      const seen = new Set<string>();
+      booths = merged.filter((b) => {
+        const k = b.name.toLowerCase();
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+    } catch (e) {
+      if ((e as any)?.name === "AbortError") return null;
+    }
+  }
+
+  booths = booths
     .sort((a, b) => a.distanceKm - b.distanceKm)
     .slice(0, 3);
 
