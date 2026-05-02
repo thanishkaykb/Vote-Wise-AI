@@ -152,13 +152,13 @@ export async function predictBooths(city: string, signal?: AbortSignal): Promise
       const lon = el.lon ?? el.center?.lon;
       if (lat == null || lon == null) return null;
       const tags = el.tags ?? {};
-      const name = tags.name || tags["name:en"] || `Unnamed ${humanType(tags.amenity)}`;
+      const name = tags.name || tags["name:en"] || `Unnamed ${humanType(tags)}`;
       return {
         id: `${el.type}-${el.id}`,
         name,
         address: buildAddress(tags),
         distanceKm: Math.round(haversineKm(geo.lat, geo.lon, lat, lon) * 10) / 10,
-        type: humanType(tags.amenity),
+        type: humanType(tags),
         lat,
         lon,
       } as PredictedBooth;
