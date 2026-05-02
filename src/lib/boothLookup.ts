@@ -35,6 +35,7 @@ const OVERPASS_ENDPOINTS = [
 
 const cache = new Map<string, { ts: number; booths: PredictedBooth[]; geo: GeoResult }>();
 const TTL = 1000 * 60 * 30;
+const LOOKUP_TIMEOUT_MS = 4500;
 
 function uniqueStrings(values: string[]) {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
@@ -74,7 +75,10 @@ function buildGeocodeCandidates(query: string) {
 
 async function searchNominatim(query: string, signal?: AbortSignal) {
   const url = `${NOMINATIM_SEARCH}?q=${encodeURIComponent(query)}&format=jsonv2&limit=5&addressdetails=1&countrycodes=in`;
-  const res = await fetch(url, { signal, headers: { Accept: "application/json" } });
+  const res = await fetch(url, {
+    signal: AbortSignal.any([signal ?? new AbortController().signal, AbortSignal.timeout(LOOKUP_TIMEOUT_MS)]),
+    headers: { Accept: "application/json" },
+  });
   if (!res.ok) return [];
   return (await res.json()) as NominatimSearchResult[];
 }
@@ -139,23 +143,25 @@ async function fetchOverpass(
   signal?: AbortSignal
 ): Promise<OverpassEl[]> {
   const body = buildOverpassQuery(lat, lon, radiusM);
-  for (const url of OVERPASS_ENDPOINTS) {
-    try {
-      const res = await fetch(url, {
-        method: "POST",
-        body,
-        signal,
-        headers: { "Content-Type": "text/plain" },
-      });
-      if (!res.ok) continue;
-      const json = (await res.json()) as { elements?: OverpassEl[] };
-      if (json.elements && json.elements.length) return json.elements;
-    } catch (e) {
-      if ((e as any)?.name === "AbortError") throw e;
-      // try next endpoint
-    }
-  }
-  return [];
+  const requests = OVERPASS_ENDPOINTS.map(async (url) => {
+    const res = await fetch(url, {
+      method: "POST",
+      body,
+      signal: AbortSignal.any([signal ?? new AbortController().signal, AbortSignal.timeout(LOOKUP_TIMEOUT_MS)]),
+      headers: { "Content-Type": "text/plain" },
+    });
+    if (!res.ok) return [];
+    const json = (await res.json()) as { elements?: OverpassEl[] };
+    return json.elements ?? [];
+  });
+
+  const settled = await Promise.allSettled(requests);
+  const firstWithData = settled.find(
+    (result): result is PromiseFulfilledResult<OverpassEl[]> =>
+      result.status === "fulfilled" && result.value.length > 0
+  );
+
+  return firstWithData?.value ?? [];
 }
 
 // Nominatim fallback — search for schools/colleges near the geocoded point.
@@ -192,7 +198,10 @@ async function fetchNominatimPOIs(
       `&format=json&limit=10&addressdetails=1&bounded=1&viewbox=${encodeURIComponent(viewbox)}` +
       `&countrycodes=in`;
     try {
-      const res = await fetch(url, { signal, headers: { Accept: "application/json" } });
+      const res = await fetch(url, {
+        signal: AbortSignal.any([signal ?? new AbortController().signal, AbortSignal.timeout(LOOKUP_TIMEOUT_MS)]),
+        headers: { Accept: "application/json" },
+      });
       if (!res.ok) continue;
       const data = (await res.json()) as Array<{
         place_id: number;
@@ -278,8 +287,13 @@ export async function predictBooths(
   const geo = await geocode(city, signal);
   if (!geo) return null;
 
+  const fallbackPromise = fetchNominatimPOIs(geo, signal).catch((e) => {
+    if ((e as any)?.name === "AbortError") return [];
+    return [];
+  });
+
   // 1) Try Overpass with expanding radii
-  const radii = [2000, 5000, 10000, 20000];
+  const radii = [2500, 7000];
   let elements: OverpassEl[] = [];
   for (const r of radii) {
     try {
@@ -315,7 +329,7 @@ export async function predictBooths(
   // 2) Fallback to Nominatim POI search if Overpass came back empty
   if (booths.length < 3) {
     try {
-      const fallback = await fetchNominatimPOIs(geo, signal);
+      const fallback = await fallbackPromise;
       const merged = [...booths, ...fallback];
       // de-dup by name
       const seen = new Set<string>();
