@@ -12,7 +12,7 @@ import { OfficialLinks } from "@/components/votewise/OfficialLinks";
 import { useProfile } from "@/hooks/useProfile";
 import { deriveState } from "@/lib/civicEngine";
 import { toast } from "sonner";
-import { CheckCircle2, MapPin, BookOpen, Compass, ExternalLink } from "lucide-react";
+import { CheckCircle2, BookOpen, ExternalLink } from "lucide-react";
 
 const Index = () => {
   const { profile, update, reset } = useProfile();
@@ -90,7 +90,7 @@ const Index = () => {
           </p>
         </div>
 
-        <div className="mt-10 grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="mt-10 grid grid-cols-2 md:grid-cols-3 gap-3">
           <ActionBtn icon={<CheckCircle2 className="w-4 h-4" />} label="Check eligibility" onClick={() => scrollTo("profile")} />
           <ActionBtn icon={<BookOpen className="w-4 h-4" />} label="Register guide" onClick={() => handleAction("register")} />
           <ActionBtn icon={<ExternalLink className="w-4 h-4" />} label="Official forms" onClick={() => scrollTo("forms")} />
