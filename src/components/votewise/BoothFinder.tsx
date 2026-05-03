@@ -1,7 +1,15 @@
 import { useEffect, useState } from "react";
 import { MapPin, Sparkles, AlertCircle, Lock, Loader2, ExternalLink, Search } from "lucide-react";
-import { predictBooths, type PredictedBooth } from "@/lib/boothLookup";
+import { type PredictedBooth } from "@/lib/boothLookup";
 import { Input } from "@/components/ui/input";
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const ANON = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
+
+type BoothLookupResponse = {
+  booths: PredictedBooth[];
+  geo: { displayName: string } | null;
+};
 
 type Props = {
   city?: string;
@@ -34,17 +42,34 @@ export const BoothFinder = ({ city }: Props) => {
     setStatus("loading");
     const timer = window.setTimeout(async () => {
       try {
-        const result = await predictBooths(q, ctrl.signal);
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/booth-predict`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${ANON}`,
+            apikey: ANON,
+          },
+          body: JSON.stringify({ query: q }),
+          signal: ctrl.signal,
+        });
+
+        if (!res.ok) {
+          throw new Error(`Booth lookup failed [${res.status}]`);
+        }
+
+        const result = (await res.json()) as BoothLookupResponse;
         if (ctrl.signal.aborted) return;
-        if (!result) {
+
+        if (!result?.geo) {
           setBooths([]);
           setGeoName(null);
           setStatus("empty");
           return;
         }
+
         setGeoName(result.geo.displayName);
-        setBooths(result.booths);
-        setStatus(result.booths.length > 0 ? "ok" : "empty");
+        setBooths(result.booths ?? []);
+        setStatus((result.booths?.length ?? 0) > 0 ? "ok" : "empty");
       } catch (e) {
         if (ctrl.signal.aborted) return;
         console.warn("[booth] lookup failed", e);
