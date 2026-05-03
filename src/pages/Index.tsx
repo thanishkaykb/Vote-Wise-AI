@@ -7,7 +7,6 @@ import { Timeline } from "@/components/votewise/Timeline";
 import { DecisionSimulator } from "@/components/votewise/DecisionSimulator";
 import { LearningCards } from "@/components/votewise/LearningCards";
 import { Assistant } from "@/components/votewise/Assistant";
-import { BoothFinder } from "@/components/votewise/BoothFinder";
 import { MarqueeStrip } from "@/components/votewise/MarqueeStrip";
 import { OfficialLinks } from "@/components/votewise/OfficialLinks";
 import { useProfile } from "@/hooks/useProfile";
@@ -57,7 +56,8 @@ const Index = () => {
         scrollTo("learn");
         break;
       case "booth":
-        scrollTo("booth");
+        scrollTo("profile");
+        toast("Use the profile section to track whether you already know your booth.");
         break;
       case "plan":
         update({ preparedness: true });
@@ -93,7 +93,6 @@ const Index = () => {
         <div className="mt-10 grid grid-cols-2 md:grid-cols-4 gap-3">
           <ActionBtn icon={<CheckCircle2 className="w-4 h-4" />} label="Check eligibility" onClick={() => scrollTo("profile")} />
           <ActionBtn icon={<BookOpen className="w-4 h-4" />} label="Register guide" onClick={() => handleAction("register")} />
-          <ActionBtn icon={<MapPin className="w-4 h-4" />} label="Find booth" onClick={() => scrollTo("booth")} />
           <ActionBtn icon={<ExternalLink className="w-4 h-4" />} label="Official forms" onClick={() => scrollTo("forms")} />
         </div>
       </section>
@@ -134,11 +133,7 @@ const Index = () => {
           <Timeline city={profile.city} />
         </Section>
 
-        <Section id="booth" eyebrow="08 · Booth" title="Your predicted polling booth">
-          <BoothFinder city={profile.city} />
-        </Section>
-
-        <Section id="assistant" eyebrow="09 · Assistant" title="Ask anything — civic or otherwise">
+        <Section id="assistant" eyebrow="08 · Assistant" title="Ask anything — civic or otherwise">
           <Assistant profile={profile} eli15={eli15} />
         </Section>
       </main>
