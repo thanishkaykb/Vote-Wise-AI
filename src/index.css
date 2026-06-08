@@ -109,16 +109,27 @@
   .prose-chat h1, .prose-chat h2, .prose-chat h3 { @apply font-display font-bold mt-2 mb-1; }
 }
 
-/* Readability: white / paper-coloured text on lime backgrounds gets a soft
-   black shadow so it never washes out. */
+/* Readability: text on lime backgrounds gets a strong black shadow so it
+   never washes out — including the lime marquee strip. */
 @layer utilities {
+  .bg-lime,
+  .brutal-card-lime,
   .bg-lime .text-white,
   .bg-lime .text-paper,
   .bg-lime .text-foreground,
+  .bg-lime .text-ink,
   .brutal-card-lime .text-white,
   .brutal-card-lime .text-paper,
-  .brutal-card-lime .text-foreground {
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55), 0 0 1px rgba(0, 0, 0, 0.4);
+  .brutal-card-lime .text-foreground,
+  .brutal-card-lime .text-ink {
+    text-shadow:
+      0 1px 0 rgba(0, 0, 0, 0.85),
+      0 2px 6px rgba(0, 0, 0, 0.6),
+      0 0 2px rgba(0, 0, 0, 0.7);
+  }
+
+  /* Prevent brutalist shadow cards from pushing past the viewport on phones */
+  html, body { overflow-x: hidden; }
   }
 }
 
