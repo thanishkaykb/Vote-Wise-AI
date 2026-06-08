@@ -70,7 +70,7 @@ const LINKS: OfficialLink[] = [
 
 export const OfficialLinks = () => {
   return (
-    <section className="brutal-card bg-card p-6 md:p-8">
+    <section className="brutal-card bg-card p-4 sm:p-6 md:p-8 max-w-full overflow-hidden">
       <div className="flex items-start justify-between flex-wrap gap-3 mb-5">
         <div>
           <div className="chip bg-sky text-white border-foreground">Awareness · Official</div>
