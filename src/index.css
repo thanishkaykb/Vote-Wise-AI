@@ -130,7 +130,6 @@
 
   /* Prevent brutalist shadow cards from pushing past the viewport on phones */
   html, body { overflow-x: hidden; }
-  }
 }
 
 @keyframes marquee {
