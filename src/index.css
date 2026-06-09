@@ -78,12 +78,18 @@
 @layer components {
   .brutal-card {
     @apply bg-card border-2 border-foreground rounded-2xl;
-    box-shadow: var(--shadow-brutal);
+    box-shadow: 3px 3px 0 0 hsl(var(--ink));
     transition: transform 0.2s var(--transition-pop), box-shadow 0.2s ease;
+  }
+  @media (min-width: 640px) {
+    .brutal-card { box-shadow: var(--shadow-brutal); }
   }
   .brutal-card:hover {
     transform: translate(-2px, -2px);
-    box-shadow: 8px 8px 0 0 hsl(var(--ink));
+    box-shadow: 5px 5px 0 0 hsl(var(--ink));
+  }
+  @media (min-width: 640px) {
+    .brutal-card:hover { box-shadow: 8px 8px 0 0 hsl(var(--ink)); }
   }
   .brutal-card-lime {
     @apply border-2 border-foreground rounded-2xl;
